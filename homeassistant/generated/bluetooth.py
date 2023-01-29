@@ -362,6 +362,10 @@ BLUETOOTH: list[dict[str, bool | str | int | list[int]]] = [
         "service_uuid": "729f0608-496a-47fe-a124-3a62aaa3fbc0",
     },
     {
+        "domain": "sonicare",
+        "manufacturer_id": 477,
+    },
+    {
         "connectable": False,
         "domain": "switchbot",
         "service_data_uuid": "00000d00-0000-1000-8000-00805f9b34fb",
