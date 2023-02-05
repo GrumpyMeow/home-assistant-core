@@ -4,10 +4,12 @@ from __future__ import annotations
 from sonicare_ble import SonicareSensor, SensorUpdate
 
 from homeassistant import config_entries
+from homeassistant.components.bluetooth.active_update_processor import (
+    ActiveBluetoothProcessorCoordinator,
+)
 from homeassistant.components.bluetooth.passive_update_processor import (
     PassiveBluetoothDataProcessor,
     PassiveBluetoothDataUpdate,
-    PassiveBluetoothProcessorCoordinator,
     PassiveBluetoothProcessorEntity,
 )
 from homeassistant.components.sensor import (
@@ -29,6 +31,10 @@ from homeassistant.helpers.sensor import sensor_device_info_to_hass_device_info
 from .const import DOMAIN
 from .device import device_key_to_bluetooth_entity_key
 
+import logging
+
+_LOGGER = logging.getLogger(__name__)
+
 SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
     SonicareSensor.BRUSHING_TIME: SensorEntityDescription(
         key=SonicareSensor.BRUSHING_TIME,
@@ -36,14 +42,14 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfTime.SECONDS,
     ),
-    SonicareSensor.CURRENT_TIME: SensorEntityDescription(
-        key=SonicareSensor.CURRENT_TIME  # ,
+    SonicareSensor.HANDLE_TIME: SensorEntityDescription(
+        key=SonicareSensor.HANDLE_TIME  # ,
         # device_class=SensorDeviceClass.TIMESTAMP,
         # state_class=SensorStateClass.,
         # native_unit_of_measurement=UnitOfTime.SECONDS,
     ),
-    SonicareSensor.TOOTHBRUSH_STATE: SensorEntityDescription(
-        key=SonicareSensor.TOOTHBRUSH_STATE
+    SonicareSensor.HANDLE_SESSION_STATE: SensorEntityDescription(
+        key=SonicareSensor.HANDLE_SESSION_STATE
     ),
     SonicareSensor.SIGNAL_STRENGTH: SensorEntityDescription(
         key=SonicareSensor.SIGNAL_STRENGTH,
@@ -53,11 +59,24 @@ SENSOR_DESCRIPTIONS: dict[str, SensorEntityDescription] = {
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
     ),
-    SonicareSensor.BATTERY_PERCENT: SensorEntityDescription(
-        key=SonicareSensor.BATTERY_PERCENT,
+    SonicareSensor.BATTERY_LEVEL: SensorEntityDescription(
+        key=SonicareSensor.BATTERY_LEVEL,
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SonicareSensor.BRUSHING_SESSION_ID: SensorEntityDescription(
+        key=SonicareSensor.BRUSHING_SESSION_ID
+    ),
+    SonicareSensor.LOADED_SESSION_ID: SensorEntityDescription(
+        key=SonicareSensor.LOADED_SESSION_ID
+    ),
+    SonicareSensor.INTENSITY: SensorEntityDescription(key=SonicareSensor.INTENSITY),
+    SonicareSensor.AVAILABLE_BRUSHING_ROUTINE: SensorEntityDescription(
+        key=SonicareSensor.AVAILABLE_BRUSHING_ROUTINE
+    ),
+    SonicareSensor.ROUTINE_LENGTH: SensorEntityDescription(
+        key=SonicareSensor.ROUTINE_LENGTH
     ),
 }
 
@@ -66,6 +85,7 @@ def sensor_update_to_bluetooth_data_update(
     sensor_update: SensorUpdate,
 ) -> PassiveBluetoothDataUpdate:
     """Convert a sensor update to a bluetooth data update."""
+    _LOGGER.debug(f"sensor_update_to_bluetooth_data_update: {sensor_update}")
     return PassiveBluetoothDataUpdate(
         devices={
             device_id: sensor_device_info_to_hass_device_info(device_info)
@@ -94,9 +114,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Sonicare BLE sensors."""
-    coordinator: PassiveBluetoothProcessorCoordinator = hass.data[DOMAIN][
-        entry.entry_id
-    ]
+    _LOGGER.debug("SENSOR async_setup_entry")
+    coordinator: ActiveBluetoothProcessorCoordinator = hass.data[DOMAIN][entry.entry_id]
     processor = PassiveBluetoothDataProcessor(sensor_update_to_bluetooth_data_update)
     entry.async_on_unload(
         processor.async_add_entities_listener(
