@@ -314,6 +314,7 @@ FLOWS = {
         "nws",
         "nzbget",
         "obihai",
+        "ocleanx",
         "octoprint",
         "omnilogic",
         "oncue",
