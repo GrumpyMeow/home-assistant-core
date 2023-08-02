@@ -1,8 +1,11 @@
+import asyncio
 from enum import Enum, auto
 import logging
 import time
+from aioesphomeapi import BluetoothGATTDescriptor
+from aioesphomeapi.model import BluetoothGATTDescriptor
 
-from bleak import BleakError, BLEDevice
+from bleak import BleakError, BLEDevice, BleakGATTCharacteristic
 from bleak_retry_connector import (
     BleakClientWithServiceCache,
     establish_connection,
@@ -13,11 +16,15 @@ from bluetooth_sensor_state_data import BluetoothData
 from home_assistant_bluetooth import BluetoothServiceInfo
 from sensor_state_data import SensorDeviceClass, SensorUpdate, Units
 from sensor_state_data.enum import StrEnum
+from bleak.backends.descriptor import BleakGATTDescriptor
+
+from homeassistant.components.esphome.bluetooth.descriptor import BleakGATTDescriptorESPHome
 
 from .const import (
     BRUSHING_UPDATE_INTERVAL_SECONDS,
     CHARACTERISTIC_BATTERY_LEVEL,
     CHARACTERISTIC_COMMAND,
+    CHARACTERISTIC_RECEIVE,
     NOT_BRUSHING_UPDATE_INTERVAL_SECONDS,
     TIMEOUT_RECENTLY_BRUSHING,
 )
@@ -123,40 +130,67 @@ class OcleanXBluetoothDeviceData(BluetoothData):
             update_interval = BRUSHING_UPDATE_INTERVAL_SECONDS
         return last_poll > update_interval
 
-    @retry_bluetooth_connection_error()
+
+
+    def callback(sender: BleakGATTCharacteristic, data: bytearray):
+        _LOGGER.debug(f"Callback= {sender}: {data}")
+
+
+
+    #@retry_bluetooth_connection_error()
     async def _get_payload(self, client: BleakClientWithServiceCache) -> None:
         """Get the payload from the brush using its gatt_characteristics."""
         # for service in await client.get_services():
         #     _LOGGER.debug("Service %s", service)
+
+
+        #await client.stop_notify(0x0017)
 
         for service in client.services:
             for characteristic in service.characteristics:
                 try:
                     value = await client.read_gatt_char(characteristic)
                     _LOGGER.debug(
-                        "%s %s %s",
+                        "%s %s %s %s",
                         characteristic.service_uuid,
                         characteristic.uuid,
+                        characteristic.handle,
                         value,
+
                     )
+                    for descriptor in characteristic.descriptors:
+                        _LOGGER.debug("   Descriptor= %s", descriptor)
                 except:
                     _LOGGER.debug(
-                        "%s %s %s",
+                        "%s %s %s %s",
                         characteristic.service_uuid,
                         characteristic.uuid,
+                        characteristic.handle,
                         "NA",
                     )
 
-        client.write_gatt_char(CHARACTERISTIC_COMMAND, [0x0A, 0x03])  # Received 0x00
-        client.write_gatt_char(CHARACTERISTIC_COMMAND, [0x03, 0x0A])  # Received 0x03
+        _LOGGER.debug(f"Write 0303")
+        await client.start_notify(23, self.callback)
+        await client.write_gatt_char(21, bytes([0x03, 0x02, 0x01]), False)
+
+        # value = await client.read_gatt_char(CHARACTERISTIC_RECEIVE)
+        # _LOGGER.debug(
+        #                 "value=%s ",
+        #                 value,
+        #             )
+
+
+        await asyncio.sleep(5)
+
+
 
         # for service in client.services.services:
         #     _LOGGER.debug("OcleanX _get_payload service: %s", service)
         # for characteristic in client.services.characteristics:
         #     _LOGGER.debug("OcleanX _get_payload characteristic: %s", characteristic)
 
-        battery_char = client.services.get_characteristic(CHARACTERISTIC_BATTERY_LEVEL)
-        battery_payload = await client.read_gatt_char(battery_char)
+        # battery_char = client.services.get_characteristic(CHARACTERISTIC_BATTERY_LEVEL)
+        # battery_payload = await client.read_gatt_char(battery_char)
         # pressure_char = client.services.get_characteristic(CHARACTERISTIC_PRESSURE)
         # pressure_payload = await client.read_gatt_char(pressure_char)
         # tb_pressure = ACTIVE_CONNECTION_PRESSURE.get(
@@ -165,20 +199,20 @@ class OcleanXBluetoothDeviceData(BluetoothData):
         # self.update_sensor(
         #     str(OralBSensor.PRESSURE), None, tb_pressure, None, "Pressure"
         # )
-        self.update_sensor(
-            str(OcleanXSensor.BATTERY_PERCENT),
-            Units.PERCENTAGE,
-            battery_payload[0],
-            SensorDeviceClass.BATTERY,
-            "Battery",
-        )
+        # self.update_sensor(
+        #     str(OcleanXSensor.BATTERY_PERCENT),
+        #     Units.PERCENTAGE,
+        #     battery_payload[0],
+        #     SensorDeviceClass.BATTERY,
+        #     "Battery",
+        # )
         _LOGGER.debug("Successfully read active gatt characters")
 
     async def async_poll(self, ble_device: BLEDevice) -> SensorUpdate:
         """Poll the device to retrieve any values we can't get from passive listening."""
         _LOGGER.debug("Polling OcleanX device: %s", ble_device.address)
         client = await establish_connection(
-            BleakClientWithServiceCache, ble_device, ble_device.address
+            BleakClientWithServiceCache, ble_device, ble_device.address, max_attempts=1, use_services_cache=False
         )
         try:
             await self._get_payload(client)
